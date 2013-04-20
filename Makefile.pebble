@@ -1,0 +1,311 @@
+#
+# Makefile for Pebble watch projects.
+#
+# The makefile should define:
+# 	SRCS with a list of source files.
+#	APP := project to build
+#	FONTS := list of fonts to bundle
+#	IMAGES := list of images to bundle
+#
+# Change PEBBLE_HOME to point to the sdk directory
+# and GCC_PREFIX to point to your arm-none-eabi gcc tree.
+# Otherwise it should "just work".
+#
+
+# TOP is the location with of this build tree
+TOP := $(dir $(lastword $(MAKEFILE_LIST)))
+-include $(TOP)/Makefile.config
+
+# If Makefile.config does not define these, use defaults paths.
+PEBBLE_HOME ?= $(HOME)/pebble-sdk-release-001/sdk
+ARM_GCC_PATH ?= $(HOME)/arm-cs-tools/bin
+
+GCC_PREFIX := $(ARM_GCC_PATH)/arm-none-eabi-
+export PATH := $(ARM_GCC_PATH):$(PATH)
+
+CC := $(GCC_PREFIX)gcc
+LD := $(CC)
+OBJCOPY := $(GCC_PREFIX)objcopy
+SIZE := $(GCC_PREFIX)size
+AR := $(GCC_PREFIX)ar
+PYTHON := python
+CP := cp
+
+# If no version is specified, use a default one
+VERSION ?= 0.1
+APP ?= pebble-app
+
+# Disable any localization; otherwise tr might complain
+override LANG := C
+
+
+# Helper macros
+map = $(foreach f,$2,$(call $1,$f))
+uppercase = $(shell echo $1 | tr -- '-.[:lower:]' '__[:upper:]')
+ucfile = $(call uppercase,$(basename $(notdir $1)))
+
+
+#
+# If no output directory is specified, put things into obj
+#
+O ?= obj
+BD ?= bin
+$(eval $(shell mkdir -p $O/src))
+$(eval $(shell mkdir -p $(BD)))
+
+ARCH_FLAGS += \
+	-mcpu=cortex-m3 \
+	-mthumb \
+
+CFLAGS += \
+	-std=c99 \
+	$(ARCH_FLAGS) \
+	-g \
+	-O0 \
+	-Wall \
+	-Wextra \
+	-Wno-error=unused-function \
+	-Wno-error=unused-variable \
+	-Wno-error=unused-parameter \
+	-fPIE \
+	-I$(PEBBLE_HOME)/include \
+	-I. \
+	-I../../lib/src \
+	-I$O \
+	-DNDEBUG \
+	-Wp,-MMD,$(dir $@).$(notdir $@).d \
+        -Wp,-MT,$@ \
+
+
+LDFLAGS += \
+	$(ARCH_FLAGS) \
+	-Wl,--warn-common \
+	-fPIE \
+	-Wl,-Map,$@.map,--emit-relocs \
+	-T$(PEBBLE_HOME)/pebble_app.ld \
+
+LDLIBS += \
+	-L$(PEBBLE_HOME)/lib \
+	-lpebble \
+
+BUILD_TIME := $(shell date "+%s")
+
+all: $O/$(APP).pbw
+	$(CP) $O/$(APP).pbw $(BD)
+
+
+#
+# Convert the elf file to a binary file, with
+# the appended Pebble metadata.
+#
+$O/pebble-app.bin: $O/pebble-app.elf
+	$(OBJCOPY) -O binary $< $@
+	$(PYTHON) $(PEBBLE_HOME)/waftools/inject_metadata.py $@
+
+# 
+# Bundle the binary (with pebble meta data) into an application.
+#
+
+# Final step to link everything into the PBW file
+$O/$(APP).pbw: $O/pebble-app.bin
+	$(PYTHON) $(PEBBLE_HOME)/tools/mkbundle.py \
+		--watchapp $< \
+		--watchapp-timestamp $(BUILD_TIME) \
+		--req-fw 1 \
+		--resources $O/app_resources.pbpack \
+		--resource-map $O/resource_map.json \
+		--resources-timestamp $(BUILD_TIME) \
+		-o $@ \
+		-v \
+
+
+
+#
+# Generate the list of object files from the SRCS list.
+# Every object requires that the resource_ids.auto.h be up to date
+#
+OBJS :=
+add_srcs = \
+	$(eval $2: $1) \
+	$(eval OBJS += $2) \
+
+$(foreach f,$(SRCS),$(call add_srcs,$f,$O/$(notdir $(f:.c=.o))))
+OBJS := $(strip $(OBJS))
+
+# Only build resource_ids.auto.h if we are making an application
+$(OBJS): $O/src/resource_ids.auto.h
+
+$O/$(APP).pbw: $O/app_resources.pbpack
+$O/pebble-app.elf: $(OBJS)
+	$(LD) \
+		$(LDFLAGS) \
+		-o $@ \
+		$^ \
+		$(LDLIBS)
+	$(SIZE) $@
+
+$O/%.o:
+	$(CC) \
+		$(CFLAGS) \
+		-c \
+		-o $@ \
+		$<
+
+
+# Generate a fake resource_map.json file
+$O/resource_map.json:
+	echo > $@ \
+		'{"friendlyVersion":"'$(VERSION)'","versionDefName":"RESOURCES"}'
+
+
+clean:
+	$(RM) \
+		$O/*.{o,a,pbw,pfo,pbi,elf,bin,map} \
+		a.out \
+		core \
+		$O/*.pbpack \
+		$O/*.pbpack.* \
+		$O/src/resource_ids.auto.h \
+
+#
+# Generate a font resource from a given ttf.
+# The fonts are specified in the leaf makefiles in $(FONT) as a list of:
+#
+#	path-to-font:size
+#
+# For example:
+#
+#	FONTS := fonts/Arial.ttf:28 fonts/Arial-Black.ttf:30
+#
+# This will produce resources named FONT_ARIAL_28 and FONT_ARIAL_BLACK_30.
+#
+# A somewhat complex make rule translates this list into the
+# targets for each font to be generated and as well as the
+# resource list to pass into the make bundle tool.
+#
+
+$O/%.pfo:
+	$(PYTHON) $(PEBBLE_HOME)/tools/font/fontgen.py \
+		pfo \
+		$(subst .,,$(suffix $(basename $@))) \
+		$< \
+		$@ \
+
+mkfont_rules = \
+	$(eval F := $(word 1,$1)) \
+	$(eval S := $(word 2,$1)) \
+	$(eval N := FONT_$(call ucfile,$F)_$S) \
+	$(eval R := $O/$N.$S.pfo) \
+	$(eval $R: $F) \
+	$(eval RESOURCES += $R) \
+	$(eval RESOURCE_LIST += $R $N) \
+
+mkfont = \
+	$(call mkfont_rules,$(subst :, ,$1)) \
+
+$(eval $(call map,mkfont,$(FONTS)))
+
+#
+# Images are converted to pbi format
+# If ":white" or ":black" are included, generate separate
+# resources for the two of them.
+#
+$O/%_white.pbi:
+	$(PYTHON) $(PEBBLE_HOME)/tools/bitmapgen.py \
+		white_trans_pbi \
+		$< \
+		$@ \
+
+$O/%_black.pbi:
+	$(PYTHON) $(PEBBLE_HOME)/tools/bitmapgen.py \
+		black_trans_pbi \
+		$< \
+		$@ \
+
+$O/%.pbi:
+	$(PYTHON) $(PEBBLE_HOME)/tools/bitmapgen.py \
+		pbi \
+		$< \
+		$@ \
+
+
+mkimage_rules = \
+	$(eval F := $(word 1,$1)) \
+	$(eval T := $(word 2,$1)) \
+	$(eval T := $(if $T,_$T,)) \
+	$(eval N := IMAGE_$(call ucfile,$F)$(call uppercase,$T)) \
+	$(eval R := $O/$N$T.pbi) \
+	$(eval $R: $F) \
+	$(eval RESOURCES += $R) \
+	$(eval RESOURCE_LIST += $R $N) \
+
+mkimage = \
+	$(call mkimage_rules,$(subst :, ,$1)) \
+
+$(eval $(call map,mkimage,$(IMAGES)))
+
+
+#
+# Generate the list of all resources from the fonts, images and
+# the resource map file.
+# \todo Images.
+#
+RESOURCES += $O/resource_map.json
+RESOURCE_LIST += $O/resource_map.json DUMMY
+
+#
+# Generate a resource binary from all of the fonts
+#
+$O/app_resources.pbpack: \
+	$O/app_resources.pbpack.manifest \
+	$O/app_resources.pbpack.table \
+	$O/app_resources.pbpack.data \
+
+	cat > $@ $^
+
+$O/app_resources.pbpack.data: $(RESOURCES)
+	cat > $@ $^
+
+$O/app_resources.pbpack.table: $(RESOURCES)
+	$(PYTHON) $(PEBBLE_HOME)/tools/pbpack_meta_data.py \
+		table \
+		$@ \
+		$^ \
+
+$O/%.manifest: $O/%.data
+	$(PYTHON) $(PEBBLE_HOME)/tools/pbpack_meta_data.py \
+		manifest \
+		$@ \
+		$(words $(RESOURCES)) \
+		$(BUILD_TIME) \
+		$(VERSION) \
+		$< \
+
+#
+# This header file name is forced by <pebble_app.h>.
+# Put it into the output build directory so that it does not
+# clutter the input source tree.
+#
+$O/src/resource_ids.auto.h: \
+	$O/app_resources.pbpack.data \
+	$(RESOURCES) \
+
+	$(PYTHON) $(PEBBLE_HOME)/tools/generate_resource_code.py \
+		resource_header \
+		$@ \
+		RESOURCES \
+		$(VERSION) \
+		$(BUILD_TIME) \
+		pebble_os.h \
+		$< \
+		$(RESOURCE_LIST) \
+
+#
+# Bring in all of the generated dependency files if any exist.
+# These are produced by the -MMD flag to gcc in $(CFLAGS).
+# If they do not exist, do not create a target for them.
+#
+$O/.*.o.d:
+	@true
+-include $O/.*.o.d
+
