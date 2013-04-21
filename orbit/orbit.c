@@ -6,7 +6,7 @@
 #define MY_UUID { 0x7A, 0xCB, 0x68, 0x2C, 0x4E, 0x6C, 0x4A, 0xDA, 0x93, 0x36, 0x00, 0x47, 0xFF, 0x28, 0xEF, 0xB5 }
 PBL_APP_INFO(MY_UUID,
              "Orbit", "Cameron MacFarland",
-             0, 5, /* App version */
+             0, 6, /* App version */
              RESOURCE_ID_IMAGE_MENU_ICON,
              APP_INFO_WATCH_FACE);
 
@@ -141,7 +141,7 @@ void pbl_main(void *params) {
 
     .tick_info = {
       .tick_handler = &handle_tick,
-      .tick_units = SECOND_UNIT
+      .tick_units = MINUTE_UNIT
     }
   };
   app_event_loop(params, &handlers);
