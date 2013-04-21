@@ -6,12 +6,13 @@
 #define MY_UUID { 0x7A, 0xCB, 0x68, 0x2C, 0x4E, 0x6C, 0x4A, 0xDA, 0x93, 0x36, 0x00, 0x47, 0xFF, 0x28, 0xEF, 0xB5 }
 PBL_APP_INFO(MY_UUID,
              "Orbit", "Cameron MacFarland",
-             0, 1, /* App version */
+             0, 5, /* App version */
              RESOURCE_ID_IMAGE_MENU_ICON,
              APP_INFO_WATCH_FACE);
 
 Window window;
 
+BmpContainer faceImage;
 RotBmpPairContainer minuteImage;
 RotBmpPairContainer hourImage;
 
@@ -20,13 +21,10 @@ TextLayer hourText;
 
 
 void set_hand_angle(RotBmpPairContainer *hand_image_container, unsigned int hand_angle, GPoint offset) {
-
   signed short x_fudge = 0;
   signed short y_fudge = 0;
 
   unsigned int pebble_angle = TRIG_MAX_ANGLE * hand_angle / 360;
-
-  rotbmp_pair_layer_set_angle(&hand_image_container->layer, pebble_angle);
 
   x_fudge += offset.x * cos_lookup(pebble_angle) / TRIG_MAX_RATIO - offset.y * sin_lookup(pebble_angle) / TRIG_MAX_RATIO;
   y_fudge += offset.x * sin_lookup(pebble_angle) / TRIG_MAX_RATIO + offset.y * cos_lookup(pebble_angle) / TRIG_MAX_RATIO;
@@ -76,10 +74,10 @@ void update_rings() {
   string_format_time(minute_str, sizeof(minute_str), "%M", &t);
 
   set_hand_text(&hourText, hourAngle, hour_str, GPoint(0,-55), GSize(26,26));
-  set_hand_text(&minuteText, minAngle, minute_str, GPoint(0,-25), GSize(18,18));
+  set_hand_text(&minuteText, minAngle, minute_str, GPoint(0,-24), GSize(18,18));
 
-  set_hand_angle(&hourImage, hourAngle, GPoint(0, -9));
-  set_hand_angle(&minuteImage, minAngle, GPoint(0, -6));
+  set_hand_angle(&hourImage, hourAngle, GPoint(0, -55));
+  set_hand_angle(&minuteImage, minAngle, GPoint(0, -24));
 }
 
 
@@ -100,10 +98,13 @@ void handle_init(AppContextRef ctx) {
 
   resource_init_current_app(&RESOURCES);
 
-  rotbmp_pair_init_container(RESOURCE_ID_IMAGE_MINUTE_RING_WHITE, RESOURCE_ID_IMAGE_MINUTE_RING_BLACK, &minuteImage);
+  bmp_init_container(RESOURCE_ID_IMAGE_FACE, &faceImage);
+  layer_add_child(&window.layer, &faceImage.layer.layer);
+
+  rotbmp_pair_init_container(RESOURCE_ID_IMAGE_MINUTE_PLANET_WHITE, RESOURCE_ID_IMAGE_MINUTE_PLANET_BLACK, &minuteImage);
   layer_add_child(&window.layer, &minuteImage.layer.layer);
 
-  rotbmp_pair_init_container(RESOURCE_ID_IMAGE_HOUR_RING_WHITE, RESOURCE_ID_IMAGE_HOUR_RING_BLACK, &hourImage);
+  rotbmp_pair_init_container(RESOURCE_ID_IMAGE_HOUR_PLANET_WHITE, RESOURCE_ID_IMAGE_HOUR_PLANET_BLACK, &hourImage);
   layer_add_child(&window.layer, &hourImage.layer.layer);
 
   text_layer_init(&minuteText, GRect(0,0,0,0));
@@ -127,6 +128,7 @@ void handle_init(AppContextRef ctx) {
 void handle_deinit(AppContextRef ctx) {
   (void)ctx;
 
+  bmp_deinit_container(&faceImage);
   rotbmp_pair_deinit_container(&minuteImage);
   rotbmp_pair_deinit_container(&hourImage);
 }
@@ -139,7 +141,7 @@ void pbl_main(void *params) {
 
     .tick_info = {
       .tick_handler = &handle_tick,
-      .tick_units = MINUTE_UNIT
+      .tick_units = SECOND_UNIT
     }
   };
   app_event_loop(params, &handlers);

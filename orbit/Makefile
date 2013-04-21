@@ -1,5 +1,6 @@
 
 APP := orbit
+VERSION := 0.5
 
 SRCS += orbit.c
 
@@ -9,9 +10,10 @@ FONTS := \
 
 IMAGES := \
 	images/menu_icon.png \
-	images/hour_ring.png:white \
-	images/hour_ring.png:black \
-	images/minute_ring.png:white \
-	images/minute_ring.png:black \
+	images/face.png \
+	images/hour_planet.png:white \
+	images/hour_planet.png:black \
+	images/minute_planet.png:white \
+	images/minute_planet.png:black \
 
 include ../Makefile.pebble
