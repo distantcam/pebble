@@ -141,7 +141,7 @@ void pbl_main(void *params) {
 
     .tick_info = {
       .tick_handler = &handle_tick,
-      .tick_units = SECOND_UNIT
+      .tick_units = MINUTE_UNIT
     }
   };
   app_event_loop(params, &handlers);
