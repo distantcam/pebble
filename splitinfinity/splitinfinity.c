@@ -6,7 +6,7 @@
 #define MY_UUID { 0xC3, 0xE6, 0x7E, 0x32, 0x97, 0x7A, 0x48, 0xCC, 0xBF, 0x7E, 0xAA, 0xE5, 0xF5, 0xBC, 0x01, 0x61 }
 PBL_APP_INFO(MY_UUID,
              "Split Infinity", "Cameron MacFarland",
-             0, 1, /* App version */
+             1, 0, /* App version */
              DEFAULT_MENU_ICON,
              APP_INFO_WATCH_FACE);
 

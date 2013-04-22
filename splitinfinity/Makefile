@@ -1,6 +1,6 @@
 
 APP := splitinfinity
-VERSION := 0.1
+VERSION := 1.0
 
 SRCS += splitinfinity.c
 
