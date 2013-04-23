@@ -7,7 +7,7 @@
 PBL_APP_INFO(MY_UUID,
              "Split Infinity", "Cameron MacFarland",
              1, 0, /* App version */
-             DEFAULT_MENU_ICON,
+             RESOURCE_ID_IMAGE_MENU_ICON,
              APP_INFO_WATCH_FACE);
 
 Window window;
