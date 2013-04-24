@@ -3,6 +3,14 @@
 #include "pebble_fonts.h"
 
 
+#define SCREEN_WIDTH 144
+#define SCREEN_HEIGHT 168
+
+#define HOUR_RADIUS -55
+#define MIN_RADIUS -24
+#define SEC_RADIUS -20
+
+
 #define MY_UUID { 0x7A, 0xCB, 0x68, 0x2C, 0x4E, 0x6C, 0x4A, 0xDA, 0x93, 0x36, 0x00, 0x47, 0xFF, 0x28, 0xEF, 0xB5 }
 PBL_APP_INFO(MY_UUID,
              "Orbit", "Cameron MacFarland",
@@ -16,41 +24,66 @@ BmpContainer faceImage;
 RotBmpPairContainer minuteImage;
 RotBmpPairContainer hourImage;
 
+Layer secondLayer;
 TextLayer minuteText;
 TextLayer hourText;
 
 
+GPoint get_angle_point(unsigned int angle, GPoint offset) {
+  unsigned int pebble_angle = TRIG_MAX_ANGLE * angle / 360;
+
+  return GPoint(
+    offset.x * cos_lookup(pebble_angle) / TRIG_MAX_RATIO - offset.y * sin_lookup(pebble_angle) / TRIG_MAX_RATIO,
+    offset.x * sin_lookup(pebble_angle) / TRIG_MAX_RATIO + offset.y * cos_lookup(pebble_angle) / TRIG_MAX_RATIO);
+}
+
+
+void secondLayer_Update_Callback(Layer *me, GContext* ctx) {
+  (void)me;
+
+  PblTm t;
+
+  get_time(&t);
+
+  int minAngle = t.tm_min * 6;
+  int secAngle = t.tm_sec * 6;
+
+  GPoint center = grect_center_point(&me->frame);
+
+  GPoint toMinute = get_angle_point(minAngle, GPoint(0, MIN_RADIUS));
+  GPoint toSec = get_angle_point(secAngle, GPoint(0, SEC_RADIUS));
+
+  graphics_context_set_fill_color(ctx, GColorWhite);
+
+  for (int x = -1; x < 3; x++)
+    for (int y = -1; y < 3; y++)
+      if (x + y > -2 && x + y < 4 && x - y < 3 && y - x < 3)
+        graphics_draw_pixel(ctx, GPoint(center.x + toMinute.x + toSec.x + x, center.y + toMinute.y + toSec.y + y));
+}
+
+
 void set_hand_angle(RotBmpPairContainer *hand_image_container, unsigned int hand_angle, GPoint offset) {
-  signed short x_fudge = 0;
-  signed short y_fudge = 0;
-
-  unsigned int pebble_angle = TRIG_MAX_ANGLE * hand_angle / 360;
-
-  x_fudge += offset.x * cos_lookup(pebble_angle) / TRIG_MAX_RATIO - offset.y * sin_lookup(pebble_angle) / TRIG_MAX_RATIO;
-  y_fudge += offset.x * sin_lookup(pebble_angle) / TRIG_MAX_RATIO + offset.y * cos_lookup(pebble_angle) / TRIG_MAX_RATIO;
+  GPoint fudge = get_angle_point(hand_angle, offset);
 
   // (144 = screen width, 168 = screen height)
-  hand_image_container->layer.layer.frame.origin.x = (144/2) - (hand_image_container->layer.layer.frame.size.w/2) + x_fudge;
-  hand_image_container->layer.layer.frame.origin.y = (168/2) - (hand_image_container->layer.layer.frame.size.h/2) + y_fudge;
+  hand_image_container->layer.layer.frame.origin.x = (SCREEN_WIDTH/2) - (hand_image_container->layer.layer.frame.size.w/2) + fudge.x;
+  hand_image_container->layer.layer.frame.origin.y = (SCREEN_HEIGHT/2) - (hand_image_container->layer.layer.frame.size.h/2) + fudge.y;
 
   layer_mark_dirty(&hand_image_container->layer.layer);
 }
 
+
 void set_hand_text(TextLayer *text_layer, unsigned int hand_angle, char *text, GPoint offset, GSize size) {
-  signed short x_fudge = (144/2);
-  signed short y_fudge = (168/2);
+  GPoint fudge = get_angle_point(hand_angle, offset);
 
-  unsigned int pebble_angle = TRIG_MAX_ANGLE * hand_angle / 360;
-
-  x_fudge += offset.x * cos_lookup(pebble_angle) / TRIG_MAX_RATIO - offset.y * sin_lookup(pebble_angle) / TRIG_MAX_RATIO;
-  y_fudge += offset.x * sin_lookup(pebble_angle) / TRIG_MAX_RATIO + offset.y * cos_lookup(pebble_angle) / TRIG_MAX_RATIO;
-
-  x_fudge -= size.w / 2;
-  y_fudge -= size.h / 2;
+  // (144 = screen width, 168 = screen height)
+  signed short x_fudge = (SCREEN_WIDTH/2) - (size.w/2) + fudge.x;
+  signed short y_fudge = (SCREEN_HEIGHT/2) - (size.h/2) + fudge.y;
 
   layer_set_frame(&text_layer->layer, GRect(x_fudge, y_fudge, size.w, size.h));
   text_layer_set_text(text_layer, text);
 }
+
 
 void update_rings() {
   PblTm t;
@@ -73,11 +106,13 @@ void update_rings() {
   string_format_time(hour_str, sizeof(hour_str), hour_format, &t);
   string_format_time(minute_str, sizeof(minute_str), "%M", &t);
 
-  set_hand_text(&hourText, hourAngle, hour_str, GPoint(0,-55), GSize(26,26));
-  set_hand_text(&minuteText, minAngle, minute_str, GPoint(0,-24), GSize(18,18));
+  set_hand_text(&hourText, hourAngle, hour_str, GPoint(0, HOUR_RADIUS), GSize(26,26));
+  set_hand_text(&minuteText, minAngle, minute_str, GPoint(0, MIN_RADIUS), GSize(18,18));
 
-  set_hand_angle(&hourImage, hourAngle, GPoint(0, -55));
-  set_hand_angle(&minuteImage, minAngle, GPoint(0, -24));
+  set_hand_angle(&hourImage, hourAngle, GPoint(0, HOUR_RADIUS));
+  set_hand_angle(&minuteImage, minAngle, GPoint(0, MIN_RADIUS));
+
+  layer_mark_dirty(&secondLayer);
 }
 
 
@@ -96,7 +131,7 @@ void handle_init(AppContextRef ctx) {
   window_stack_push(&window, false /* Not Animated */);
   window_set_background_color(&window, GColorBlack);
 
-  resource_init_current_app(&RESOURCES);
+  resource_init_current_app(&APP_RESOURCES);
 
   bmp_init_container(RESOURCE_ID_IMAGE_FACE, &faceImage);
   layer_add_child(&window.layer, &faceImage.layer.layer);
@@ -121,6 +156,10 @@ void handle_init(AppContextRef ctx) {
   text_layer_set_font(&hourText, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_22)));
   layer_add_child(&window.layer, &hourText.layer);
 
+  layer_init(&secondLayer, window.layer.frame);
+  secondLayer.update_proc = &secondLayer_Update_Callback;
+  layer_add_child(&window.layer, &secondLayer);
+
   update_rings();
 }
 
@@ -141,7 +180,7 @@ void pbl_main(void *params) {
 
     .tick_info = {
       .tick_handler = &handle_tick,
-      .tick_units = MINUTE_UNIT
+      .tick_units = SECOND_UNIT
     }
   };
   app_event_loop(params, &handlers);

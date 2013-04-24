@@ -171,7 +171,7 @@ void handle_init(AppContextRef ctx) {
   window_init(&window, "Split Infinity");
   window_stack_push(&window, true /* Animated */);
 
-  resource_init_current_app(&RESOURCES);
+  resource_init_current_app(&APP_RESOURCES);
 
   bmp_init_container(RESOURCE_ID_IMAGE_FACE, &faceImage);
   layer_add_child(&window.layer, &faceImage.layer.layer);

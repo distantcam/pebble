@@ -293,7 +293,7 @@ $O/src/resource_ids.auto.h: \
 	$(PYTHON) $(PEBBLE_HOME)/tools/generate_resource_code.py \
 		resource_header \
 		$@ \
-		RESOURCES \
+		APP_RESOURCES \
 		$(VERSION) \
 		$(BUILD_TIME) \
 		pebble_os.h \
