@@ -3,6 +3,9 @@
 #include "pebble_fonts.h"
 
 
+#define SHOW_SECONDS false
+
+
 #define SCREEN_WIDTH 144
 #define SCREEN_HEIGHT 168
 
@@ -13,8 +16,13 @@
 
 #define MY_UUID { 0x7A, 0xCB, 0x68, 0x2C, 0x4E, 0x6C, 0x4A, 0xDA, 0x93, 0x36, 0x00, 0x47, 0xFF, 0x28, 0xEF, 0xB5 }
 PBL_APP_INFO(MY_UUID,
-             "Orbit", "Cameron MacFarland",
-             0, 6, /* App version */
+#if SHOW_SECONDS == true
+             "Orbit + Seconds", 
+#else
+             "Orbit",
+#endif
+             "Cameron MacFarland",
+             1, 0, /* App version */
              RESOURCE_ID_IMAGE_MENU_ICON,
              APP_INFO_WATCH_FACE);
 
@@ -24,9 +32,12 @@ BmpContainer faceImage;
 RotBmpPairContainer minuteImage;
 RotBmpPairContainer hourImage;
 
-Layer secondLayer;
-TextLayer minuteText;
 TextLayer hourText;
+TextLayer minuteText;
+
+#if SHOW_SECONDS == true
+Layer secondLayer;
+#endif
 
 
 GPoint get_angle_point(unsigned int angle, GPoint offset) {
@@ -38,6 +49,7 @@ GPoint get_angle_point(unsigned int angle, GPoint offset) {
 }
 
 
+#if SHOW_SECONDS == true
 void secondLayer_Update_Callback(Layer *me, GContext* ctx) {
   (void)me;
 
@@ -60,6 +72,7 @@ void secondLayer_Update_Callback(Layer *me, GContext* ctx) {
       if (x + y > -2 && x + y < 4 && x - y < 3 && y - x < 3)
         graphics_draw_pixel(ctx, GPoint(center.x + toMinute.x + toSec.x + x, center.y + toMinute.y + toSec.y + y));
 }
+#endif
 
 
 void set_hand_angle(RotBmpPairContainer *hand_image_container, unsigned int hand_angle, GPoint offset) {
@@ -98,21 +111,22 @@ void update_rings() {
 
   char *hour_format;
   if (clock_is_24h_style()) {
-    hour_format = "%k";
+    hour_format = "%H";
   } else {
-    hour_format = "%l";
+    hour_format = "%I";
   }
 
   string_format_time(hour_str, sizeof(hour_str), hour_format, &t);
   string_format_time(minute_str, sizeof(minute_str), "%M", &t);
 
-  set_hand_text(&hourText, hourAngle, hour_str, GPoint(0, HOUR_RADIUS), GSize(26,26));
+  if (!clock_is_24h_style() && (hour_str[0] == '0'))
+    memmove(hour_str, &hour_str[1], sizeof(hour_str) - 1);
+
+  set_hand_text(&hourText, hourAngle, hour_str, GPoint(0, HOUR_RADIUS), GSize(28,28));
   set_hand_text(&minuteText, minAngle, minute_str, GPoint(0, MIN_RADIUS), GSize(18,18));
 
   set_hand_angle(&hourImage, hourAngle, GPoint(0, HOUR_RADIUS));
   set_hand_angle(&minuteImage, minAngle, GPoint(0, MIN_RADIUS));
-
-  layer_mark_dirty(&secondLayer);
 }
 
 
@@ -120,7 +134,15 @@ void handle_tick(AppContextRef ctx, PebbleTickEvent *t) {
   (void)ctx;
   (void)t;
 
-  update_rings();
+  if ((t->units_changed & MINUTE_UNIT) != 0) {
+    update_rings();
+  }
+
+#if SHOW_SECONDS == true
+  if ((t->units_changed & SECOND_UNIT) != 0) {
+    layer_mark_dirty(&secondLayer);
+  }
+#endif
 }
 
 
@@ -136,18 +158,11 @@ void handle_init(AppContextRef ctx) {
   bmp_init_container(RESOURCE_ID_IMAGE_FACE, &faceImage);
   layer_add_child(&window.layer, &faceImage.layer.layer);
 
-  rotbmp_pair_init_container(RESOURCE_ID_IMAGE_MINUTE_PLANET_WHITE, RESOURCE_ID_IMAGE_MINUTE_PLANET_BLACK, &minuteImage);
-  layer_add_child(&window.layer, &minuteImage.layer.layer);
-
   rotbmp_pair_init_container(RESOURCE_ID_IMAGE_HOUR_PLANET_WHITE, RESOURCE_ID_IMAGE_HOUR_PLANET_BLACK, &hourImage);
   layer_add_child(&window.layer, &hourImage.layer.layer);
 
-  text_layer_init(&minuteText, GRect(0,0,0,0));
-  text_layer_set_text_color(&minuteText, GColorWhite);
-  text_layer_set_background_color(&minuteText, GColorClear);
-  text_layer_set_text_alignment(&minuteText, GTextAlignmentCenter);
-  text_layer_set_font(&minuteText, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_14)));
-  layer_add_child(&window.layer, &minuteText.layer);
+  rotbmp_pair_init_container(RESOURCE_ID_IMAGE_MINUTE_PLANET_WHITE, RESOURCE_ID_IMAGE_MINUTE_PLANET_BLACK, &minuteImage);
+  layer_add_child(&window.layer, &minuteImage.layer.layer);
 
   text_layer_init(&hourText, GRect(0,0,0,0));
   text_layer_set_text_color(&hourText, GColorWhite);
@@ -156,9 +171,18 @@ void handle_init(AppContextRef ctx) {
   text_layer_set_font(&hourText, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_22)));
   layer_add_child(&window.layer, &hourText.layer);
 
+  text_layer_init(&minuteText, GRect(0,0,0,0));
+  text_layer_set_text_color(&minuteText, GColorWhite);
+  text_layer_set_background_color(&minuteText, GColorClear);
+  text_layer_set_text_alignment(&minuteText, GTextAlignmentCenter);
+  text_layer_set_font(&minuteText, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_14)));
+  layer_add_child(&window.layer, &minuteText.layer);
+
+#if SHOW_SECONDS == true
   layer_init(&secondLayer, window.layer.frame);
   secondLayer.update_proc = &secondLayer_Update_Callback;
   layer_add_child(&window.layer, &secondLayer);
+#endif
 
   update_rings();
 }
@@ -180,7 +204,11 @@ void pbl_main(void *params) {
 
     .tick_info = {
       .tick_handler = &handle_tick,
+#if SHOW_SECONDS == true
       .tick_units = SECOND_UNIT
+#else
+      .tick_units = MINUTE_UNIT
+#endif
     }
   };
   app_event_loop(params, &handlers);

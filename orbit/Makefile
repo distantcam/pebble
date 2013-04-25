@@ -1,6 +1,6 @@
 
 APP := orbit
-VERSION := 0.6
+VERSION := 1.0
 
 SRCS += orbit.c
 
