@@ -1,11 +1,11 @@
 
 APP := bargraph
-VERSION := 0.9
+VERSION := 1.1
 
 SRCS += bargraph.c
 
 FONTS := \
-	fonts/roboto.ttf:22 \
+	fonts/arial.ttf:22 \
 
 IMAGES := \
 	images/menu_icon.png \
