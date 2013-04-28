@@ -18,11 +18,18 @@ Layer hour_display_layer;
 
 
 void graphics_draw_arc(GContext *ctx, GPoint p, int radius, int thickness, int start, int end) {
-  start = start % 360 - 90;
-  end = end % 360 - 90;
+  start = start % 360;
+  end = end % 360;
+
+  while (start < 0) start += 360;
+  while (end < 0) end += 360;
+
+  if (end == 0) end = 360;
   
-  int sslope = TRIG_MAX_RATIO * sin_lookup(start * TRIG_MAX_ANGLE / 360) / cos_lookup(start * TRIG_MAX_ANGLE / 360);
-  int eslope = TRIG_MAX_RATIO * sin_lookup(end * TRIG_MAX_ANGLE / 360) / cos_lookup(end * TRIG_MAX_ANGLE / 360);
+  float sslope = (float)cos_lookup(start * TRIG_MAX_ANGLE / 360) / (float)sin_lookup(start * TRIG_MAX_ANGLE / 360);
+  float eslope = (float)cos_lookup(end * TRIG_MAX_ANGLE / 360) / (float)sin_lookup(end * TRIG_MAX_ANGLE / 360);
+
+  if (end == 360) eslope = -1000000;
 
   int ir2 = (radius - thickness) * (radius - thickness);
   int or2 = radius * radius;
@@ -33,9 +40,23 @@ void graphics_draw_arc(GContext *ctx, GPoint p, int radius, int thickness, int s
       int x2 = x * x;
       int y2 = y * y;
 
-      if ((x2 + y2 < or2 && x2 + y2 >= ir2) &&
-        ((start == 0 && x >= 0) || (start == 180 && x <= 0) || (y > x * sslope / TRIG_MAX_RATIO && start < 180) || (y <= x * sslope / TRIG_MAX_RATIO && start > 180)) &&
-        ((end == 360 && x <= 0) || (end == 180 && x >= 0) || (y < x * eslope / TRIG_MAX_RATIO && end < 180) || (y >= x * eslope / TRIG_MAX_RATIO && end > 180)))
+      if (
+        (x2 + y2 < or2 && x2 + y2 >= ir2) &&
+        (
+          (y > 0 && start < 180 && x <= y * sslope) ||
+          (y < 0 && start > 180 && x >= y * sslope) ||
+          (y < 0 && start <= 180) ||
+          (y == 0 && start <= 180 && x < 0) ||
+          (y == 0 && start == 0 && x > 0)
+        ) &&
+        (
+          (y > 0 && end < 180 && x >= y * eslope) ||
+          (y < 0 && end > 180 && x <= y * eslope) ||
+          (y > 0 && end >= 180) ||
+          (y == 0 && end >= 180 && x < 0) ||
+          (y == 0 && start == 0 && x > 0)
+        )
+      )
         graphics_draw_pixel(ctx, GPoint(p.x + x, p.y + y));
     }
 }
@@ -48,13 +69,20 @@ void minute_display_layer_update_callback(Layer *me, GContext* ctx) {
 
   get_time(&t);
 
-  unsigned int angle = t.tm_min * 6;
+  unsigned int angle = t.tm_min * 6 - 90;
+  while (angle < 0) angle += 360;
 
   GPoint center = grect_center_point(&me->frame);
 
   graphics_context_set_fill_color(ctx, GColorWhite);
 
-  graphics_draw_arc(ctx, center, 77, 25, 0, angle);
+  if (angle > 6)
+  {
+    graphics_draw_arc(ctx, center, 77, 25, 0, angle - 3);
+    graphics_draw_arc(ctx, center, 77, 25, angle + 3, 360);
+  }
+  else
+    graphics_draw_arc(ctx, center, 77, 25, angle + 3, angle + 357);
 }
 
 
@@ -65,13 +93,14 @@ void hour_display_layer_update_callback(Layer *me, GContext* ctx) {
 
   get_time(&t);
 
-  unsigned int angle = (((t.tm_hour % 12) * 30) + (t.tm_min/2));
+  unsigned int angle = (((t.tm_hour % 12) * 30) + (t.tm_min/2)) - 90;
+  while (angle < 0) angle += 360;
 
   GPoint center = grect_center_point(&me->frame);
 
   graphics_context_set_fill_color(ctx, GColorWhite);
 
-  graphics_draw_arc(ctx, center, 48, 40, 0, angle);
+  graphics_draw_arc(ctx, center, 48, 40, angle - 15, angle + 15);
 }
 
 
